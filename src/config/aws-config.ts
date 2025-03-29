@@ -5,10 +5,15 @@ import { Amplify } from 'aws-amplify';
 export const initializeAWS = () => {
   Amplify.configure({
     Auth: {
-      region: 'us-east-1', // Replace with your region
-      userPoolId: 'us-east-1_example', // Replace with your User Pool ID
-      userPoolWebClientId: 'example-client-id', // Replace with your App Client ID
-      authenticationFlowType: 'USER_SRP_AUTH',
+      Cognito: {
+        userPoolId: 'us-east-1_example', // Replace with your User Pool ID
+        userPoolClientId: 'example-client-id', // Replace with your App Client ID
+        loginWith: {
+          email: true,
+          phone: true,
+          username: false
+        }
+      }
     }
   });
 };

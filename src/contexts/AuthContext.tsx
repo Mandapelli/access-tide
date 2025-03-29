@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Auth } from 'aws-amplify';
+import { signIn, signOut, getCurrentUser, confirmResetPassword, resetPassword } from 'aws-amplify/auth';
 import { useToast } from '@/components/ui/use-toast';
 
 interface User {
@@ -36,8 +36,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Check if the user is already authenticated
     const checkAuthState = async () => {
       try {
-        const userData = await Auth.currentAuthenticatedUser();
-        setUser(userData);
+        const userData = await getCurrentUser();
+        // Convert the response to match our User interface
+        const formattedUser = {
+          username: userData.username,
+          attributes: userData.signInDetails?.loginId 
+            ? { email: userData.signInDetails.loginId }
+            : {}
+        };
+        setUser(formattedUser);
         setIsAuthenticated(true);
       } catch (error) {
         console.log('Not signed in');
@@ -51,21 +58,36 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     checkAuthState();
   }, []);
 
-  const signIn = async (identifier: string, password: string) => {
+  const handleSignIn = async (identifier: string, password: string) => {
     setIsLoading(true);
     setError(null);
     try {
       // Determine if identifier is email or phone
       const isEmail = identifier.includes('@');
       
-      // For sign in, we'll use the identifier directly
-      const user = await Auth.signIn(identifier, password);
-      setUser(user);
-      setIsAuthenticated(true);
-      toast({
-        title: "Success",
-        description: "Signed in successfully!",
+      // For sign in with Amplify v6
+      const { isSignedIn, nextStep } = await signIn({
+        username: identifier,
+        password,
       });
+      
+      if (isSignedIn) {
+        // Get the current user details after sign in
+        const userData = await getCurrentUser();
+        // Convert the response to match our User interface
+        const formattedUser = {
+          username: userData.username,
+          attributes: userData.signInDetails?.loginId 
+            ? { email: userData.signInDetails.loginId }
+            : {}
+        };
+        setUser(formattedUser);
+        setIsAuthenticated(true);
+        toast({
+          title: "Success",
+          description: "Signed in successfully!",
+        });
+      }
     } catch (error) {
       console.error('Error signing in:', error);
       if (error instanceof Error) {
@@ -92,7 +114,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
     setError(null);
     try {
-      await Auth.forgotPassword(identifier);
+      await resetPassword({ username: identifier });
       toast({
         title: "Code Sent",
         description: "Verification code has been sent to your email/phone",
@@ -123,19 +145,39 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
     setError(null);
     try {
-      // For OTP authentication in Cognito, we need to create a new temporary password
+      // For OTP authentication in Cognito with Amplify v6, we need to create a new temporary password
       const newPassword = Math.random().toString(36).slice(2, 10);
       
-      await Auth.forgotPasswordSubmit(identifier, code, newPassword);
+      // Confirm the reset password with verification code
+      await confirmResetPassword({
+        username: identifier,
+        confirmationCode: code,
+        newPassword
+      });
       
       // After successful verification, sign in the user with the new password
-      const user = await Auth.signIn(identifier, newPassword);
-      setUser(user);
-      setIsAuthenticated(true);
-      toast({
-        title: "Success",
-        description: "Signed in successfully with verification code!",
+      const { isSignedIn } = await signIn({
+        username: identifier,
+        password: newPassword,
       });
+      
+      if (isSignedIn) {
+        // Get the current user details after sign in
+        const userData = await getCurrentUser();
+        // Convert the response to match our User interface
+        const formattedUser = {
+          username: userData.username,
+          attributes: userData.signInDetails?.loginId 
+            ? { email: userData.signInDetails.loginId }
+            : {}
+        };
+        setUser(formattedUser);
+        setIsAuthenticated(true);
+        toast({
+          title: "Success",
+          description: "Signed in successfully with verification code!",
+        });
+      }
     } catch (error) {
       console.error('Error verifying OTP:', error);
       if (error instanceof Error) {
@@ -158,9 +200,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const signOut = async () => {
+  const handleSignOut = async () => {
     try {
-      await Auth.signOut();
+      await signOut();
       setUser(null);
       setIsAuthenticated(false);
       toast({
@@ -184,10 +226,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       user, 
       isAuthenticated, 
       isLoading, 
-      signIn, 
+      signIn: handleSignIn, 
       requestOTP, 
       verifyOTP, 
-      signOut, 
+      signOut: handleSignOut, 
       error 
     }}>
       {children}
